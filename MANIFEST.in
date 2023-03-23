@@ -1,0 +1,2 @@
+recursive-include zenodo_integration_app/static *
+recursive-include zenodo_integration_app/templates *

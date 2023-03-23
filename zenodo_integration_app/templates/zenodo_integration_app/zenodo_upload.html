@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block content %}
+<div class="main-content-wrapper">
+    <main class="main-content">
+        <div class="container-fluid">
+            <h1>Welcome to {{ project_name }}</h1>
+            <p>Upload your files to Zenodo</p>
+            <form action="/zenodo_integration_app/zenodo_upload_file/" method="post">{% csrf_token %}
+                {% for file in experiment_files %}
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" value="{{ file.data_product_uri }}" name="dataProductURI"  checked>
+                    <label class="form-check-label">{{ file.name }}</label>
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </form>
+        </div>
+    </main>
+</div>
+{% endblock content %}
