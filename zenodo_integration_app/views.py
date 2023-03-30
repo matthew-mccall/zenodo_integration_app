@@ -69,14 +69,30 @@ def zenodo_callback(request):
 
 @login_required
 def zenodo_upload(request):
-    if not (request.session.get('zenodo_oauth_token') and request.session.get('zenodo_experiment_id')):
-        return redirect('/zenodo_integration_app/error')
+    if not (request.session.get('zenodo_oauth_token') or request.session.get('zenodo_experiment_id')):
+        return redirect('/zenodo_integration_app/error', {
+            'error_message': 'You must be logged in to Zenodo and have an experiment selected to upload files to Zenodo.'
+        })
 
     experiment_id = request.session['zenodo_experiment_id']
     existing_experiments = ZenodoExperiment.objects.filter(user=request.user, experiment_id=experiment_id)
 
     existingExperimentUrls = []
-    zenodo = OAuth2Session(client_id, token=request.session['zenodo_oauth_token'])
+
+    extra = {
+        'client_id': client_id,
+        'client_secret': client_secret
+    }
+
+    def tokenUpdater(token):
+        request.session['zenodo_oauth_token'] = token
+
+    zenodo = OAuth2Session(
+        client_id, 
+        token=request.session['zenodo_oauth_token'],
+        auto_refresh_kwargs=extra,
+        auto_refresh_url=token_url,
+        token_updater=tokenUpdater)
 
     if existing_experiments.exists():
         for existing_experiment in existing_experiments:
@@ -84,6 +100,8 @@ def zenodo_upload(request):
                 res = zenodo.get('https://zenodo.org/api/deposit/depositions/{0}'.format(existing_experiment.depo_id))
                 if res.status_code == 200:
                     existingExperimentUrls.append(res.json()['links']['html'])
+                elif res.status_code == 410 or res.status_code == 404:
+                    existing_experiment.delete()
 
     _, files = user_storage.list_experiment_dir(request, experiment_id)
 

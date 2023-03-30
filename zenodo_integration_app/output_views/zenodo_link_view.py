@@ -73,14 +73,20 @@ class ZenodoLinkViewProvider:
         # The Airavata Django Portal uses the Airavata Python Client SDK:
         # https://github.com/apache/airavata/tree/master/airavata-api/airavata-client-sdks/airavata-python-sdk
 
+        request.session['zenodo_experiment_id'] = experiment.experimentId
+        
+        if request.session['zenodo_oauth_token']:
+            return {
+                "label": "Proceed to Zenodo Upload Manager",
+                "url": "/zenodo_integration_app/zenodo_upload/"
+            }
+
         zenodo = OAuth2Session(client_id, redirect_uri=redirect_uri, scope="deposit:write deposit:actions")
         authorization_url, state = zenodo.authorization_url(authorization_base_url)
 
         request.session['zenodo_oauth_state'] = state
-        request.session['zenodo_experiment_id'] = experiment.experimentId
 
-        label = "Proceed to Zenodo"
         return {
-            "label": label,
+            "label": "Authenticate with Zenodo",
             "url": authorization_url
         }
