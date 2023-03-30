@@ -8,6 +8,15 @@
         <div class="container-fluid">
             <h1>Welcome to {{ project_name }}</h1>
             <p>Upload your files to Zenodo</p>
+            {% if existing_experiment_urls %}
+            <div class="alert alert-primary">
+                Existing experiment uploads were found:
+                <ul>
+                    {% for experiment in existing_experiment_urls %}
+                    <li><a href="{{ experiment }}">{{ experiment }}</a></li>
+                    {% endfor %}
+            </div>
+            {% endif %}
             <form action="/zenodo_integration_app/zenodo_upload_file/" method="post">{% csrf_token %}
                 {% for file in experiment_files %}
                 <div class="form-check">

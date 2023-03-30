@@ -1,14 +1,18 @@
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseNotFound
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 
 from airavata_django_portal_sdk import user_storage
 
 from requests_oauthlib import OAuth2Session
 from dotenv import load_dotenv
+import urllib.parse
+
+from .models import ZenodoExperiment
 
 import os
+import uuid
 
 load_dotenv()
 client_id = os.getenv("ZENODO_CLIENT_ID")
@@ -65,11 +69,23 @@ def zenodo_callback(request):
 
 @login_required
 def zenodo_upload(request):
-
     if not (request.session.get('zenodo_oauth_token') and request.session.get('zenodo_experiment_id')):
-        return redirect('/zenodo_integration_app/home')
+        return redirect('/zenodo_integration_app/error')
 
-    dirs, files = user_storage.list_experiment_dir(request, request.session['zenodo_experiment_id'])
+    experiment_id = request.session['zenodo_experiment_id']
+    existing_experiments = ZenodoExperiment.objects.filter(user=request.user, experiment_id=experiment_id)
+
+    existingExperimentUrls = []
+    zenodo = OAuth2Session(client_id, token=request.session['zenodo_oauth_token'])
+
+    if existing_experiments.exists():
+        for existing_experiment in existing_experiments:
+            if existing_experiment.depo_id:
+                res = zenodo.get('https://zenodo.org/api/deposit/depositions/{0}'.format(existing_experiment.depo_id))
+                if res.status_code == 200:
+                    existingExperimentUrls.append(res.json()['links']['html'])
+
+    _, files = user_storage.list_experiment_dir(request, experiment_id)
 
     fileData = []
     for file in files:
@@ -81,7 +97,7 @@ def zenodo_upload(request):
     return render(request, "zenodo_integration_app/zenodo_upload.html", {
         'project_name': "Zenodo Upload Manager",
         'experiment_files': fileData,
-        # 'request': request,
+        'existing_experiment_urls': existingExperimentUrls
     })
 
 @login_required
@@ -90,7 +106,9 @@ def zenodo_upload_file(request):
     data_product_uri_list = request.POST.getlist('dataProductURI')
 
     if not request.session.get('zenodo_oauth_token'):
-        return redirect('/zenodo_integration_app/home')
+        return redirect('/zenodo_integration_app/error', {
+            'error_message': 'No Zenodo OAuth token found in session'
+        })
 
     # Upload files to Zenodo
     zenodo = OAuth2Session(client_id, token=request.session['zenodo_oauth_token'])
@@ -104,6 +122,12 @@ def zenodo_upload_file(request):
         }
     }, headers={'Content-Type': 'application/json'})
 
+    if not res.json().get('links'):
+        return render(request, "zenodo_integration_app/error.html", {
+            'error_message': 'Zenodo API error: ' + res.json().get('message')
+        })
+
+    depo_id = res.json()['id']
     bucket_url = res.json()['links']['bucket']
     html_url = res.json()['links']['html']
 
@@ -111,6 +135,9 @@ def zenodo_upload_file(request):
         file = user_storage.open_file(request, data_product_uri=data_product_uri)
         res = zenodo.put(bucket_url + '/' + file.name, data=file)
 
-    print(res.json())
+    zeneodo_experiment, created = ZenodoExperiment.objects.get_or_create(user=request.user, experiment_id=request.session['zenodo_experiment_id'])
+    if created or not zeneodo_experiment.depo_id:
+        zeneodo_experiment.depo_id = depo_id
+        zeneodo_experiment.save()
 
     return redirect(html_url)
