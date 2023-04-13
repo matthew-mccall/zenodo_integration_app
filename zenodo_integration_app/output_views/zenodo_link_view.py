@@ -75,7 +75,7 @@ class ZenodoLinkViewProvider:
 
         request.session['zenodo_experiment_id'] = experiment.experimentId
         
-        if request.session['zenodo_oauth_token']:
+        if request.session.get('zenodo_oauth_token'):
             return {
                 "label": "Proceed to Zenodo Upload Manager",
                 "url": "/zenodo_integration_app/zenodo_upload/"
