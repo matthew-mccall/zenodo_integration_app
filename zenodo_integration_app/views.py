@@ -103,13 +103,15 @@ def zenodo_upload(request):
                         existingExperimentUrls.append(res.json()['links']['html'])
                     elif res.status_code == 410 or res.status_code == 404:
                         existing_experiment.depo_id.remove(depo_id)
-                        existing_experiment.save()
-    else:
-        return render(request, 'zenodo_integration_app/error.html', {
-            'error_message': 'Experiment not found. It may have expired.'
-        })
 
-    _, files = user_storage.list_experiment_dir(request, experiment_id)
+                existing_experiment.save()
+
+    try:
+        _, files = user_storage.list_experiment_dir(request, experiment_id)
+    except Exception as e:
+        return render(request, 'zenodo_integration_app/error.html', {
+            'error_message': 'Error listing experiment files: {0}'.format(e)
+        })
 
     fileData = []
     for file in files:
@@ -158,10 +160,13 @@ def zenodo_upload_file(request):
     for data_product_uri in data_product_uri_list:
         file = user_storage.open_file(request, data_product_uri=data_product_uri)
         res = zenodo.put(bucket_url + '/' + file.name, data=file)
+        if res.status_code != 200:
+            return render(request, "zenodo_integration_app/error.html", {
+                'error_message': 'Zenodo API error: ' + res.json().get('message')
+            })
 
     zeneodo_experiment, created = ZenodoExperiment.objects.get_or_create(user=request.user, experiment_id=request.session['zenodo_experiment_id'])
-    if created or not zeneodo_experiment.depo_id:
-        zeneodo_experiment.depo_id = depo_id
-        zeneodo_experiment.save()
+    zeneodo_experiment.depo_id.append(depo_id)
+    zeneodo_experiment.save()
 
     return redirect(html_url)
