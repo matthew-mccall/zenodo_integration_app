@@ -10,7 +10,7 @@
             <p>Upload your files to Zenodo</p>
             {% if existing_experiment_urls %}
             <div class="alert alert-primary">
-                Existing experiment uploads were found:
+                Existing experiment depositions were found:
                 <ul>
                     {% for experiment in existing_experiment_urls %}
                     <li><a href="{{ experiment }}">{{ experiment }}</a></li>
@@ -24,7 +24,7 @@
                     <label class="form-check-label">{{ file.name }}</label>
                 </div>
                 {% endfor %}
-                <button type="submit" class="btn btn-primary mt-3">Submit</button>
+                <button type="submit" class="btn btn-primary mt-3">Make new Zenodo Deposition</button>
             </form>
         </div>
     </main>
