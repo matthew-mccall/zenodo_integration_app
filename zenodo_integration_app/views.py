@@ -70,7 +70,7 @@ def zenodo_callback(request):
 @login_required
 def zenodo_upload(request):
     if not (request.session.get('zenodo_oauth_token') or request.session.get('zenodo_experiment_id')):
-        return redirect('/zenodo_integration_app/error', {
+        return redirect('/zenodo_integration_app/error.html', {
             'error_message': 'You must be logged in to Zenodo and have an experiment selected to upload files to Zenodo.'
         })
 
@@ -97,11 +97,17 @@ def zenodo_upload(request):
     if existing_experiments.exists():
         for existing_experiment in existing_experiments:
             if existing_experiment.depo_id:
-                res = zenodo.get('https://zenodo.org/api/deposit/depositions/{0}'.format(existing_experiment.depo_id))
-                if res.status_code == 200:
-                    existingExperimentUrls.append(res.json()['links']['html'])
-                elif res.status_code == 410 or res.status_code == 404:
-                    existing_experiment.delete()
+                for depo_id in existing_experiment.depo_id:
+                    res = zenodo.get('https://zenodo.org/api/deposit/depositions/{0}'.format(depo_id))
+                    if res.status_code == 200:
+                        existingExperimentUrls.append(res.json()['links']['html'])
+                    elif res.status_code == 410 or res.status_code == 404:
+                        existing_experiment.depo_id.remove(depo_id)
+                        existing_experiment.save()
+    else:
+        return render(request, 'zenodo_integration_app/error.html', {
+            'error_message': 'Experiment not found. It may have expired.'
+        })
 
     _, files = user_storage.list_experiment_dir(request, experiment_id)
 
@@ -124,7 +130,7 @@ def zenodo_upload_file(request):
     data_product_uri_list = request.POST.getlist('dataProductURI')
 
     if not request.session.get('zenodo_oauth_token'):
-        return redirect('/zenodo_integration_app/error', {
+        return render(request, '/zenodo_integration_app/error.html', {
             'error_message': 'No Zenodo OAuth token found in session'
         })
 
