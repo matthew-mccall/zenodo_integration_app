@@ -53,8 +53,23 @@ def home(request):
     #
     # For more information as well as other user_storage functions, see https://airavata-django-portal-sdk.readthedocs.io/en/latest/
 
+    # Get list of experiments for user
+    # experiments = request.airavata_client.getUserExperiments(request.authz_token, settings.GATEWAY_ID, request.user.username, -1, 0)
+
+    experiments_with_zenodo = ZenodoExperiment.objects.filter(user=request.user)
+    experiments = []
+
+    for experiment_with_zenodo in experiments_with_zenodo:
+        experiment = request.airavata_client.getExperiment(request.authz_token, experiment_with_zenodo.experiment_id)
+        experiments.append({
+            'experiment_name': experiment.experimentName,
+            'experiment_id': experiment.experimentId,
+            'depo_id': experiment_with_zenodo.depo_id
+        })
+
     return render(request, "zenodo_integration_app/home.html", {
-        'project_name': "Zenodo Integration App"
+        'project_name': "Zenodo Upload Manager",
+        'experiments': experiments
     })
 
 @login_required

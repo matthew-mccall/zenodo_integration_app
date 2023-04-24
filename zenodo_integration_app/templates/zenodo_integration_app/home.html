@@ -7,6 +7,25 @@
     <main class="main-content">
         <div class="container-fluid">
             <h1>Welcome to {{ project_name }}</h1>
+            <p>Your existing uploads to Zenodo are listed below</p>
+            {% if experiments %}
+            {% for experiment in experiments %}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <a href="/workspace/experiments/{{ experiment.experiment_id }}">{{ experiment.experiment_name }}</a>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {% for depo_id in experiment.depo_id %}
+                        <li class="list-group-item">
+                            <a href="https://zenodo.org/deposit/{{ depo_id }}">https://zenodo.org/deposit/{{ depo_id }}</a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+            {% else %}
+            <p>No experiments found</p>
+            {% endif %}
         </div>
     </main>
 </div>
