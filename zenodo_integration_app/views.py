@@ -22,6 +22,11 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = "1"
 authorization_base_url = 'https://zenodo.org/oauth/authorize'
 token_url = 'https://zenodo.org/oauth/token'
 
+extra = {
+    'client_id': client_id,
+    'client_secret': client_secret
+}
+
 # Create your views here.
 
 @login_required
@@ -53,23 +58,62 @@ def home(request):
     #
     # For more information as well as other user_storage functions, see https://airavata-django-portal-sdk.readthedocs.io/en/latest/
 
+    if not (request.session.get('zenodo_oauth_token')):
+        zenodo = OAuth2Session(client_id, redirect_uri=redirect_uri, scope="deposit:write deposit:actions")
+        authorization_url, state = zenodo.authorization_url(authorization_base_url)
+
+        request.session['zenodo_oauth_state'] = state
+
+        return redirect(authorization_url)
+
     # Get list of experiments for user
     # experiments = request.airavata_client.getUserExperiments(request.authz_token, settings.GATEWAY_ID, request.user.username, -1, 0)
 
     experiments_with_zenodo = ZenodoExperiment.objects.filter(user=request.user)
     experiments = []
 
+    def tokenUpdater(token):
+        request.session['zenodo_oauth_token'] = token
+
+    zenodo = OAuth2Session(
+        client_id, 
+        token=request.session['zenodo_oauth_token'],
+        auto_refresh_kwargs=extra,
+        auto_refresh_url=token_url,
+        token_updater=tokenUpdater)
+
     for experiment_with_zenodo in experiments_with_zenodo:
+
+        existingExperimentUrls = []
+
+        # check if experiment still exists on Zenodo
+        for depo_id in experiment_with_zenodo.depo_id:
+            res = zenodo.get('https://zenodo.org/api/deposit/depositions/{0}'.format(depo_id))
+            if res.status_code == 200:
+                existingExperimentUrls.append(res.json()['links']['html'])
+            elif res.status_code == 410 or res.status_code == 404:
+                experiment_with_zenodo.depo_id.remove(depo_id)
+
+        experiment_with_zenodo.save()
+
+        if len(experiment_with_zenodo.depo_id) == 0:
+            ZenodoExperiment.objects.filter(user=request.user, experiment_id=experiment_with_zenodo.experiment_id).delete()
+            continue
+
         experiment = request.airavata_client.getExperiment(request.authz_token, experiment_with_zenodo.experiment_id)
         experiments.append({
             'experiment_name': experiment.experimentName,
             'experiment_id': experiment.experimentId,
-            'depo_id': experiment_with_zenodo.depo_id
+            'depo_id': existingExperimentUrls,
+            'created': experiment.creationTime
         })
+
+    # Sort experiments by creation time
+    experiments.sort(key=lambda x: x['created'], reverse=True)
 
     return render(request, "zenodo_integration_app/home.html", {
         'project_name': "Zenodo Upload Manager",
-        'experiments': experiments
+        'experiments': experiments,
     })
 
 @login_required
@@ -84,20 +128,18 @@ def zenodo_callback(request):
 
 @login_required
 def zenodo_upload(request):
-    if not (request.session.get('zenodo_oauth_token') or request.session.get('zenodo_experiment_id')):
+    if not (request.session.get('zenodo_oauth_token')):
         return redirect('/zenodo_integration_app/error.html', {
             'error_message': 'You must be logged in to Zenodo and have an experiment selected to upload files to Zenodo.'
         })
+
+    if not (request.session.get('zenodo_experiment_id')):
+        return redirect('/zenodo_integration_app/home')
 
     experiment_id = request.session['zenodo_experiment_id']
     existing_experiments = ZenodoExperiment.objects.filter(user=request.user, experiment_id=experiment_id)
 
     existingExperimentUrls = []
-
-    extra = {
-        'client_id': client_id,
-        'client_secret': client_secret
-    }
 
     def tokenUpdater(token):
         request.session['zenodo_oauth_token'] = token
@@ -151,13 +193,33 @@ def zenodo_upload_file(request):
             'error_message': 'No Zenodo OAuth token found in session'
         })
 
+    if not request.session.get('zenodo_experiment_id'):
+        return render(request, '/zenodo_integration_app/error.html', {
+            'error_message': 'No experiment selected'
+        })
+
+    experiment_id = request.session['zenodo_experiment_id']
+
+    # Get experiment
+    try:
+        experiment = request.airavata_client.getExperiment(request.authz_token, experiment_id)
+    except Exception as e:
+        return render(request, '/zenodo_integration_app/error.html', {
+            'error_message': 'Error getting experiment: {0}'.format(e)
+        })
+
+    description = "{} on Plasma Science Virtual Laboratory".format(experiment.experimentName)
+
+    if experiment.description:
+        description += "\n\n" + experiment.description
+
     # Upload files to Zenodo
     zenodo = OAuth2Session(client_id, token=request.session['zenodo_oauth_token'])
     res = zenodo.post('https://zenodo.org/api/deposit/depositions', json={
         'metadata': {
-            'title': 'Plasma Science Virtual Laboratory',
+            'title': experiment.experimentName,
             'upload_type': 'dataset',
-            'description': 'Plasma Science Virtual Laboratory',
+            'description': description,
             'creators': [{'name': 'Plasma Science Virtual Laboratory', 'affiliation': 'Plasma Science Virtual Laboratory'}],
             'access_right': 'closed',
         }
@@ -180,7 +242,7 @@ def zenodo_upload_file(request):
                 'error_message': 'Zenodo API error: ' + res.json().get('message')
             })
 
-    zeneodo_experiment, created = ZenodoExperiment.objects.get_or_create(user=request.user, experiment_id=request.session['zenodo_experiment_id'])
+    zeneodo_experiment, created = ZenodoExperiment.objects.get_or_create(user=request.user, experiment_id=experiment_id)
     zeneodo_experiment.depo_id.append(depo_id)
     zeneodo_experiment.save()
 

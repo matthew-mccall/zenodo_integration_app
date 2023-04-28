@@ -17,7 +17,7 @@
                     <ul class="list-group list-group-flush">
                         {% for depo_id in experiment.depo_id %}
                         <li class="list-group-item">
-                            <a href="https://zenodo.org/deposit/{{ depo_id }}">https://zenodo.org/deposit/{{ depo_id }}</a>
+                            <a href="{{ depo_id }}">{{ depo_id }}</a>
                         </li>
                         {% endfor %}
                     </ul>
