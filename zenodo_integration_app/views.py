@@ -222,6 +222,7 @@ def zenodo_upload_file(request):
             'description': description,
             'creators': [{'name': 'Plasma Science Virtual Laboratory', 'affiliation': 'Plasma Science Virtual Laboratory'}],
             'access_right': 'closed',
+            'version': str(len(ZenodoExperiment.objects.filter(user=request.user, experiment_id=experiment_id)) + 1),
         }
     }, headers={'Content-Type': 'application/json'})
 
